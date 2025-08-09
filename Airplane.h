@@ -15,6 +15,7 @@
 
 constexpr float TURN_ANGULAR_ACCEL = 40.f;   // deg/s^2
 constexpr float MAX_TURN_RATE      = 90.f;  // deg/s
+constexpr float LIFESPAN      = 30.f;
 
 
 inline float randomPick() {
@@ -33,6 +34,8 @@ private:
     float currentTurnDir{0.f};   // -1, 0, or 1
     float dirTimer{0.f};         // seconds since last change
 
+    float age{0.f};
+
 public:
     explicit Airplane(const glm::vec3& startPos)
         : pos(startPos)
@@ -44,6 +47,11 @@ public:
     void update(float dt) {
         if (this->alive){
             pos += vel * dt;
+            age += dt;
+            if (this->age > LIFESPAN){
+                alive = false;
+                return;
+            }
 
             // rotate vel around global Y by the angle turned this frame
             // turnrate is deg/s -> angle this frame in radians
