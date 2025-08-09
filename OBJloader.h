@@ -20,7 +20,7 @@ bool loadOBJ(
 	file = fopen(path, "r");
 	if (!file) {
 		printf("Impossible to open the file ! Are you in the right path ?\n");
-		printf(path);
+		cout<<path;
 		return false;
 	}
 

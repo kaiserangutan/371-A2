@@ -13,7 +13,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 
-constexpr float TURN_ANGULAR_ACCEL = 20.f;   // deg/s^2
+constexpr float TURN_ANGULAR_ACCEL = 40.f;   // deg/s^2
 constexpr float MAX_TURN_RATE      = 90.f;  // deg/s
 
 
@@ -37,9 +37,8 @@ public:
     explicit Airplane(const glm::vec3& startPos)
         : pos(startPos)
     {
-        vel = glm::vec3(0.f, 0.f, 15.f)
-            + glm::vec3(2.f, 0.f, 0.f) * randomPick()
-            + glm::vec3(0.f, 2.f, 0.f) * randomPick();
+        vel = glm::vec3(0.f, 0.f, 25.f)
+            + glm::vec3(3.f, 0.f, 0.f) * randomPick();
     }
 
     void update(float dt) {
@@ -55,7 +54,7 @@ public:
             }
 
             
-            roll = (turnrate / MAX_TURN_RATE) * 60.f;
+            roll = -(turnrate / MAX_TURN_RATE) * 60.f;
 
 
             turnrate = std::clamp(turnrate + TURN_ANGULAR_ACCEL * dt * currentTurnDir,
