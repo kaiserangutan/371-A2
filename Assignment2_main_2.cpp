@@ -147,9 +147,6 @@ int main(int argc, char* argv[]) {
 
     // SCENE PASS!!!
     glUseProgram(shaderScene);
-    int fbw, fbh;
-    glfwGetFramebufferSize(window, &fbw, &fbh);
-    glViewport(0, 0, fbw, fbh);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glClearColor(0.2f, 0.35f, 0.7f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
