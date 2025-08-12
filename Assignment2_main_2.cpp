@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
   const float TANK_TURN_SPEED = glm::radians(90.0f); 
 
 
-  mat4 projectionMatrix = perspective(radians(70.0f), WIDTH * 1.0f / HEIGHT, 0.01f, 800.0f);
+  mat4 projectionMatrix = perspective(radians(80.0f), WIDTH * 1.0f / HEIGHT, 0.01f, 400.0f);
   mat4 viewMatrix = lookAt(cameraPosition, cameraPosition + cameraLookAt, cameraUp);
 
 
@@ -90,9 +90,17 @@ int main(int argc, char* argv[]) {
   utils::SetUniformVec3(shaderScene, "light_color", vec3(1.f, 1.f, .95f));
   utils::SetUniformVec3(shaderScene, "object_color", vec3(1));
 
+  
+
   // tell shader which texture units to use
   utils::SetUniform1i(shaderScene, "albedo_tex", 0); // albedo on unit 0
   utils::SetUniform1i(shaderScene, "shadow_map", 1); // shadow map on unit 1
+
+  // for camera floodlight
+  utils::SetUniformVec3(shaderScene, "camLight_color", vec3(1.0f, 1.0f, 0.5f));
+  utils::SetUniform1f (shaderScene, "camLight_cutoff_inner", cos(radians(12.0f)));
+  utils::SetUniform1f (shaderScene, "camLight_cutoff_outer", cos(radians(18.0f)));
+  utils::SetUniform1f (shaderScene, "camLight_intensity",    20.0f);
 
 
   float lastFrameTime = glfwGetTime();
@@ -108,6 +116,7 @@ int main(int argc, char* argv[]) {
 
   float propSpinDeg = 0.f;
   float planeSpawnTimer = 4.f;
+  
 
   while (!glfwWindowShouldClose(window)) {
     float dt = glfwGetTime() - lastFrameTime;
@@ -178,6 +187,16 @@ int main(int argc, char* argv[]) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glClearColor(0.2f, 0.35f, 0.7f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glm::vec3 camPos = cameraPosition;
+    glm::vec3 camDir = glm::normalize(cameraLookAt);
+    vec3 cameraSideVector = normalize(glm::cross(cameraLookAt, vec3(0,1,0)));
+
+    utils::SetUniformVec3(shaderScene, "camLight_position",   camPos);
+    utils::SetUniformVec3(shaderScene, "camLight_direction",  glm::rotate(mat4(1.f), radians(20.f), normalize(cameraUp))* glm::rotate(mat4(1.f), radians(-20.f), normalize(cameraSideVector)) * vec4(camDir, 1.f));
+    utils::SetUniformVec3(shaderScene, "camLight_color",      glm::vec3(1.0f, 1.0f, 0.6f));
+    utils::SetUniform1f (shaderScene, "camLight_intensity",   5.0f);
+    utils::SetUniform1f (shaderScene, "camLight_cutoff_inner", cos(glm::radians(10.0f)));
+    utils::SetUniform1f (shaderScene, "camLight_cutoff_outer", cos(glm::radians(14.0f)));
     glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 1.0f, 1.0f);
 
     utils::BindShadowMap(depth.texture); //binds to tex unit 1 by default
@@ -202,7 +221,7 @@ int main(int argc, char* argv[]) {
     float currentCameraSpeed = (fastCam) ? cameraFastSpeed : cameraSpeed;
 
     cameraLookAt = computeCameraLookAt(lastMousePosX, lastMousePosY, dt);
-    // vec3 cameraSideVector = normalize(glm::cross(cameraLookAt, vec3(0,1,0)));
+    
 
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) tankYaw += TANK_TURN_SPEED * dt;
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) tankYaw -= TANK_TURN_SPEED * dt;
@@ -210,8 +229,12 @@ int main(int argc, char* argv[]) {
 
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) tankPosition += tankForward * (TANK_SPEED * dt);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) tankPosition -= tankForward * (TANK_SPEED * dt);
+
     tankLookAt = glm::normalize(tankForward);
     cameraPosition = tankPosition - vec3(0.f, -4.f, 0.f);
+    
+
+    
       
   }
 
@@ -248,7 +271,7 @@ bool InitContext() {
   glfwInit();
 
 
-  window = glfwCreateWindow(WIDTH, HEIGHT, "Comp371 - Tut 06", NULL, NULL);
+  window = glfwCreateWindow(WIDTH, HEIGHT, "Assignment 2", NULL, NULL);
   if (!window) {
     std::cerr << "Failed to create GLFW window\n";
     glfwTerminate();

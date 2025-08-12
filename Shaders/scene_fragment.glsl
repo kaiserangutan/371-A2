@@ -6,6 +6,13 @@ uniform vec3 light_color;
 uniform vec3 light_position;
 uniform vec3 light_direction;
 
+uniform vec3  camLight_position;
+uniform vec3  camLight_direction;
+uniform vec3  camLight_color;
+uniform float camLight_cutoff_inner;
+uniform float camLight_cutoff_outer;
+uniform float camLight_intensity;
+
 uniform vec3 object_color;   // tinting
 
 const float shading_ambient_strength    = 0.05;
@@ -16,6 +23,8 @@ uniform float light_cutoff_outer;
 uniform float light_cutoff_inner;
 uniform float light_near_plane;
 uniform float light_far_plane;
+
+
 
 uniform vec3 view_position;
 
@@ -67,6 +76,16 @@ float spotlight_scalar() {
         return 0.0;
     }
 }
+float spotlight_scalar_custom(vec3 Lpos, vec3 Ldir, float innerCos, float outerCos) {
+    float theta = dot(normalize(fragment_position - Lpos), normalize(Ldir));
+    if (theta > innerCos) {
+        return 1.0;
+    } else if (theta > outerCos) {
+        return (1.0 - cos(PI * (theta - outerCos) / (innerCos - outerCos))) * 0.5;
+    } else {
+        return 0.0;
+    }
+}
 
 void main()
 {
@@ -77,6 +96,12 @@ void main()
     vec3 ambient  = ambient_color(light_color);
     vec3 diffuse  = lit * diffuse_color(light_color, light_position);
     vec3 specular = lit * specular_color(light_color, light_position);
+    float camSpot = spotlight_scalar_custom(
+    camLight_position, camLight_direction,
+    camLight_cutoff_inner, camLight_cutoff_outer);
+
+    diffuse  += camSpot * camLight_intensity * diffuse_color(camLight_color, camLight_position);
+    specular += camSpot * camLight_intensity * specular_color(camLight_color, camLight_position);
 
     vec3 color = (specular + diffuse + ambient) * baseColor;
     result = vec4(color, 1.0);
