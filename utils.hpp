@@ -99,6 +99,7 @@ DepthMap CreateDepthMap(GLsizei texSize) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  
 
   glGenFramebuffers(1, &d.fbo);
   glBindFramebuffer(GL_FRAMEBUFFER, d.fbo);
@@ -116,17 +117,114 @@ void BindShadowMap(GLuint depthTex) {
 
 GLuint LoadTexture2D(const std::string& path);
 
-// plane drawing helpers
+
+
+// drawing helpers
 glm::mat4 BuildPlaneBaseModel(const Airplane& p) {
   using namespace glm;
   const mat4 T   = translate(mat4(1.f), p.position());
   const mat4 Y   = p.velocityYawMatrix();
   const mat4 Br  = rotate(mat4(1.f), radians(p.bankRollDeg()), vec3(0,0,1));
   const mat4 Fix = rotate(mat4(1.f), radians(-90.f), vec3(1,0,0)); // model axis fix
-  const mat4 S   = scale(mat4(1.f), vec3(0.1f));
+  const mat4 S   = scale(mat4(1.f), vec3(0.2f));
   return T * Y * Br * Fix * S;
 }
 
+glm::mat4 BuildFloorBaseModel() {
+  using namespace glm;
+  const mat4 T = translate(mat4(1.f), vec3(0.f, -3.f, 0.f));
+  const mat4 S = scale(mat4(1.f), vec3(40.f, 0.01f, 40.f));
+  return T * S;
+}
+
+glm::mat4 BuildTankModel(const glm::vec3& pos, const glm::vec3& lookDir) {
+  using namespace glm;
+  glm::vec3 f = lookDir;
+  f.y = 0.0f; f = glm::normalize(f);
+
+  float yaw = -std::atan2(f.x, -f.z);          
+  const glm::mat4 T   = glm::translate(glm::mat4(1.f), pos);
+  const glm::mat4 Y   = glm::rotate(glm::mat4(1.f), yaw, glm::vec3(0,1,0));
+  const glm::mat4 Fix = glm::rotate(glm::mat4(1.f), radians(180.f), vec3(0,1,0));
+  const glm::mat4 S   = glm::mat4(1.f);
+
+  return T * Y * Fix * S;
+}
+void DrawFloorShadowOnly(const Mesh& floorMesh, GLuint shaderShadow, const glm::mat4& lightProjView)
+{ 
+  using namespace glm;
+  const mat4 floorModel = BuildFloorBaseModel();
+  SetUniformMat4(shaderShadow, "transform_in_light_space", lightProjView * floorModel);
+
+  glBindVertexArray(floorMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, floorMesh.vertices);
+  glBindVertexArray(0);
+}
+
+void DrawTankShadowOnly(const glm::vec3& pos, const glm::vec3& lookDir,
+                               const Mesh& tankMesh, GLuint shaderShadow,
+                               const glm::mat4& lightProjView)
+{
+  using namespace glm;
+  const mat4 model = BuildTankModel(pos, lookDir);
+  SetUniformMat4(shaderShadow, "transform_in_light_space", lightProjView * model);
+  glBindVertexArray(tankMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, tankMesh.vertices);
+  glBindVertexArray(0);
+}
+
+void DrawCubeShadowOnly(const Mesh& floorMesh, GLuint shaderShadow, const glm::mat4& lightProjView)
+{ 
+  using namespace glm;
+  const mat4 cubeModel = mat4(1.f);
+  SetUniformMat4(shaderShadow, "transform_in_light_space", lightProjView * cubeModel);
+
+  glBindVertexArray(floorMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, floorMesh.vertices);
+  glBindVertexArray(0);
+}
+
+inline void DrawTankSceneOnly(const glm::vec3& pos, const glm::vec3& lookDir,
+                              const Mesh& tankMesh, GLuint shaderScene)
+{
+  using namespace glm;
+  const mat4 model = BuildTankModel(pos, lookDir);
+  SetUniformMat4(shaderScene, "model_matrix", model);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, tankMesh.texture);
+  glBindVertexArray(tankMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, tankMesh.vertices);
+  glBindVertexArray(0);
+}
+
+void DrawCubeSceneOnly(const Mesh& floorMesh, GLuint shaderScene)
+{ 
+  using namespace glm;
+  const mat4 cubeModel = mat4(1.f);
+  SetUniformMat4(shaderScene, "model_matrix", cubeModel);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, floorMesh.texture);
+
+  glBindVertexArray(floorMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, floorMesh.vertices);
+  glBindVertexArray(0);
+}
+
+
+void DrawFloorSceneOnly(const Mesh& floorMesh, GLuint shaderScene)
+{ 
+  using namespace glm;
+  const mat4 floorModel = BuildFloorBaseModel();
+  SetUniformMat4(shaderScene, "model_matrix", floorModel);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, floorMesh.texture);
+
+  glBindVertexArray(floorMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, floorMesh.vertices);
+  glBindVertexArray(0);
+}
  void DrawPlaneShadowOnly(const Airplane& p,
                                 const PlaneMeshes& mesh,
                                 GLuint shaderShadow,
@@ -183,6 +281,9 @@ void DrawPlaneSceneOnly(const Airplane& p,
   glDrawArrays(GL_TRIANGLES, 0, mesh.prop.vertices);
   glBindVertexArray(0);
 }
+
+
+
 
 } // namespace utils
 

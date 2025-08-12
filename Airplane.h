@@ -40,7 +40,7 @@ public:
     explicit Airplane(const glm::vec3& startPos)
         : pos(startPos)
     {
-        vel = glm::vec3(0.f, 0.f, 25.f)
+        vel = glm::vec3(0.f, 0.f, 15.f)
             + glm::vec3(3.f, 0.f, 0.f) * randomPick();
     }
 

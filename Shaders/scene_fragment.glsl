@@ -8,9 +8,9 @@ uniform vec3 light_direction;
 
 uniform vec3 object_color;   // tinting
 
-const float shading_ambient_strength    = 0.1;
+const float shading_ambient_strength    = 0.05;
 const float shading_diffuse_strength    = 0.5;
-const float shading_specular_strength   = 0.8;
+const float shading_specular_strength   = 0.9;
 
 uniform float light_cutoff_outer;
 uniform float light_cutoff_inner;
@@ -21,6 +21,8 @@ uniform vec3 view_position;
 
 uniform sampler2D shadow_map;  // bind on unit 1
 uniform sampler2D albedo_tex;  // bind on unit 0
+
+uniform vec2 uv_scale;
 
 in vec3 fragment_position;
 in vec4 fragment_position_light_space;
@@ -50,7 +52,8 @@ float shadow_scalar() {
     ndc = ndc * 0.5 + 0.5;
     float closest_depth = texture(shadow_map, ndc.xy).r;
     float current_depth = ndc.z;
-    float bias = 0.0005;
+    float bias = 0.000012;
+
     return ((current_depth - bias) < closest_depth) ? 1.0 : 0.0;
 }
 
@@ -69,7 +72,7 @@ void main()
 {
     float lit = shadow_scalar() * spotlight_scalar();
 
-    vec3 baseColor = texture(albedo_tex, vUV).rgb * object_color;
+    vec3 baseColor = texture(albedo_tex, vUV * uv_scale).rgb * object_color;
 
     vec3 ambient  = ambient_color(light_color);
     vec3 diffuse  = lit * diffuse_color(light_color, light_position);

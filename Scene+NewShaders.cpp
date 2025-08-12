@@ -20,7 +20,7 @@
 
 #include "shaderloader.h"
 #include "OBJloader.h"  //For loading .obj files
-#include "OBJloaderV2.h"  //For loading .obj files using a polygon list format
+#include "OBJloaderV3.h"  //For loading .obj files using a polygon list format
 
 using namespace glm;
 using namespace std;
