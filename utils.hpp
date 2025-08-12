@@ -109,9 +109,11 @@ DepthMap CreateDepthMap(GLsizei texSize) {
   return d;
 }
 
-void BindShadowMap(GLuint depthTex) {
+void BindShadowMap(GLuint depthTex, GLuint depthCamTex) {
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D, depthTex);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, depthCamTex);
 }
 
 
@@ -128,6 +130,13 @@ glm::mat4 BuildPlaneBaseModel(const Airplane& p) {
   const mat4 Fix = rotate(mat4(1.f), radians(-90.f), vec3(1,0,0)); // model axis fix
   const mat4 S   = scale(mat4(1.f), vec3(0.2f));
   return T * Y * Br * Fix * S;
+}
+
+glm::mat4 BuildBulletBaseModel(const Bullet& b) {
+  using namespace glm;
+  const mat4 T   = translate(mat4(1.f), b.position());
+  const mat4 S   = scale(mat4(1.f), vec3(0.01f));
+  return T * S;
 }
 
 glm::mat4 BuildFloorBaseModel() {
@@ -279,6 +288,41 @@ void DrawPlaneSceneOnly(const Airplane& p,
   glBindTexture(GL_TEXTURE_2D, mesh.prop.texture);
   glBindVertexArray(mesh.prop.vao);
   glDrawArrays(GL_TRIANGLES, 0, mesh.prop.vertices);
+  glBindVertexArray(0);
+}
+
+
+ void DrawBulletShadowOnly(const Bullet& b,
+                                const Mesh& mesh,
+                                GLuint shaderShadow,
+                                const glm::mat4& lightProjView)
+{
+  using namespace glm;
+  const mat4 bulletModel = BuildBulletBaseModel(b);
+
+  SetUniformMat4(shaderShadow, "transform_in_light_space", lightProjView * bulletModel);
+  glBindVertexArray(mesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, mesh.vertices);
+  glBindVertexArray(0);
+}
+
+
+void DrawBulletSceneOnly(const Bullet& b,
+                               const Mesh& mesh,
+                               GLuint shaderScene)
+{
+  using namespace glm;
+  const mat4 base = BuildBulletBaseModel(b);
+
+  const mat4 bulletModel = base;
+
+
+
+  SetUniformMat4(shaderScene, "model_matrix", bulletModel);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, mesh.texture);
+  glBindVertexArray(mesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, mesh.vertices);
   glBindVertexArray(0);
 }
 

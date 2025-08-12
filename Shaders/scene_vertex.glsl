@@ -7,10 +7,13 @@ uniform mat4 model_matrix;
 uniform mat4 view_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 light_proj_view_matrix;
+uniform mat4 camLight_proj_view_matrix;              
+
 
 out vec3 fragment_normal;
 out vec3 fragment_position;
 out vec4 fragment_position_light_space;
+out vec4 fragment_position_camLight_space; 
 out vec2 vUV;                            
 
 void main()
@@ -23,6 +26,7 @@ void main()
     fragment_normal = normalize(normalMatrix * in_normal);
 
     fragment_position_light_space = light_proj_view_matrix * worldPos;
+    fragment_position_camLight_space = camLight_proj_view_matrix * worldPos;
 
     vUV = in_uv;
 

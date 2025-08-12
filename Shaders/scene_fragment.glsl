@@ -27,7 +27,7 @@ uniform float light_far_plane;
 
 
 uniform vec3 view_position;
-
+uniform sampler2D cam_shadow_map;  // bind on unit 2
 uniform sampler2D shadow_map;  // bind on unit 1
 uniform sampler2D albedo_tex;  // bind on unit 0
 
@@ -35,6 +35,7 @@ uniform vec2 uv_scale;
 
 in vec3 fragment_position;
 in vec4 fragment_position_light_space;
+in vec4 fragment_position_camLight_space;
 in vec3 fragment_normal;
 in vec2 vUV;                   // from vertex shader
 
@@ -87,6 +88,15 @@ float spotlight_scalar_custom(vec3 Lpos, vec3 Ldir, float innerCos, float outerC
     }
 }
 
+float shadow_scalar_custom(vec4 lightSpacePos, sampler2D shadowTex) {
+    vec3 ndc = lightSpacePos.xyz / lightSpacePos.w;
+    ndc = ndc * 0.5 + 0.5;
+    float closest_depth = texture(shadowTex, ndc.xy).r;
+    float current_depth = ndc.z;
+    float bias = 0.0012;
+    return ((current_depth - bias) < closest_depth) ? 1.0 : 0.0;
+}
+
 void main()
 {
     float lit = shadow_scalar() * spotlight_scalar();
@@ -99,9 +109,10 @@ void main()
     float camSpot = spotlight_scalar_custom(
     camLight_position, camLight_direction,
     camLight_cutoff_inner, camLight_cutoff_outer);
+    float litCam = camSpot * shadow_scalar_custom(fragment_position_camLight_space, cam_shadow_map);
 
-    diffuse  += camSpot * camLight_intensity * diffuse_color(camLight_color, camLight_position);
-    specular += camSpot * camLight_intensity * specular_color(camLight_color, camLight_position);
+    diffuse  += litCam * camLight_intensity * diffuse_color(camLight_color, camLight_position);
+    specular += litCam * camLight_intensity * specular_color(camLight_color, camLight_position);
 
     vec3 color = (specular + diffuse + ambient) * baseColor;
     result = vec4(color, 1.0);
