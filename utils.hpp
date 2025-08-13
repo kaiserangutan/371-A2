@@ -97,8 +97,12 @@ DepthMap CreateDepthMap(GLsizei texSize) {
                GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+  float border[4] = {1,1,1,1};
+  glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border);
   
 
   glGenFramebuffers(1, &d.fbo);
@@ -142,7 +146,7 @@ glm::mat4 BuildBulletBaseModel(const Bullet& b) {
 glm::mat4 BuildFloorBaseModel() {
   using namespace glm;
   const mat4 T = translate(mat4(1.f), vec3(0.f, -3.f, 0.f));
-  const mat4 S = scale(mat4(1.f), vec3(40.f, 0.01f, 40.f));
+  const mat4 S = scale(mat4(1.f), vec3(40.f, 0.3f, 40.f));
   return T * S;
 }
 
@@ -182,14 +186,14 @@ void DrawTankShadowOnly(const glm::vec3& pos, const glm::vec3& lookDir,
   glBindVertexArray(0);
 }
 
-void DrawCubeShadowOnly(const Mesh& floorMesh, GLuint shaderShadow, const glm::mat4& lightProjView)
+void DrawCubeShadowOnly(const Mesh& cubeMesh, GLuint shaderShadow, const glm::mat4& lightProjView)
 { 
   using namespace glm;
-  const mat4 cubeModel = mat4(1.f);
+  const mat4 cubeModel = scale(mat4(1.f), vec3(2.f)) * translate(mat4(1.f), vec3(0.f, -.5f, 20.f)) * rotate(mat4(1.f), radians(45.f), normalize(vec3(1,1,1)));
   SetUniformMat4(shaderShadow, "transform_in_light_space", lightProjView * cubeModel);
 
-  glBindVertexArray(floorMesh.vao);
-  glDrawArrays(GL_TRIANGLES, 0, floorMesh.vertices);
+  glBindVertexArray(cubeMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertices);
   glBindVertexArray(0);
 }
 
@@ -206,17 +210,16 @@ inline void DrawTankSceneOnly(const glm::vec3& pos, const glm::vec3& lookDir,
   glBindVertexArray(0);
 }
 
-void DrawCubeSceneOnly(const Mesh& floorMesh, GLuint shaderScene)
+void DrawCubeSceneOnly(const Mesh& cubeMesh, GLuint shaderScene)
 { 
   using namespace glm;
-  const mat4 cubeModel = mat4(1.f);
-  SetUniformMat4(shaderScene, "model_matrix", cubeModel);
-
+  const mat4 model = scale(mat4(1.f), vec3(2.f)) * translate(mat4(1.f), vec3(0.f, -.5f, 20.f)) * rotate(mat4(1.f), radians(45.f), normalize(vec3(1,1,1)));
+  SetUniformMat4(shaderScene, "model_matrix", model);
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, floorMesh.texture);
+  glBindTexture(GL_TEXTURE_2D, cubeMesh.texture);
 
-  glBindVertexArray(floorMesh.vao);
-  glDrawArrays(GL_TRIANGLES, 0, floorMesh.vertices);
+  glBindVertexArray(cubeMesh.vao);
+  glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertices);
   glBindVertexArray(0);
 }
 

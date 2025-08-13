@@ -44,25 +44,29 @@ int main(int argc, char* argv[]) {
 
   utils::Mesh tankMesh = utils::SetupModelVBO(tankPath);
   utils::Mesh floorMesh = utils::SetupModelVBO(cubePath);
+  utils::Mesh cubeMesh = utils::SetupModelVBO(cubePath);
   utils::Mesh bulletMesh = utils::SetupModelVBO(cubePath);
   utils::Mesh planeMesh = utils::SetupModelVBO(planePath);
   utils::Mesh propMesh  = utils::SetupModelVBO(propPath);
   utils::PlaneMeshes meshes{ planeMesh, propMesh };
 
   string floorTexturePath = "Textures/desert.jpg";
-  string bulletTexturePath = "Textures/steel.jpg";
+  string bulletTexturePath = "Textures/brass.jpg";
   string tankTexturePath = "Textures/camo2.jpg";
-  string planeTexturePath = "Textures/camo2.png";
+  string planeTexturePath = "Textures/camo2.jpg";
   string propTexturePath = "Textures/steel.png";
+  string cubeTexturePath = "Textures/brick.jpg";
 
-  floorMesh.texture = utils::LoadTexture2D(floorTexturePath);
+  
+  cubeMesh.texture = utils::LoadTexture2D(cubeTexturePath);
   tankMesh.texture = utils::LoadTexture2D(tankTexturePath);
   bulletMesh.texture = utils::LoadTexture2D(bulletTexturePath);
   meshes.plane.texture = utils::LoadTexture2D(planeTexturePath);
   meshes.prop.texture  = utils::LoadTexture2D(propTexturePath);
+  floorMesh.texture = utils::LoadTexture2D(floorTexturePath);
 
   // depth map for shadows
-  const unsigned int DEPTH_MAP_TEXTURE_SIZE = 2048;
+  const unsigned int DEPTH_MAP_TEXTURE_SIZE = 1440;
   utils::DepthMap depth = utils::CreateDepthMap(DEPTH_MAP_TEXTURE_SIZE);
   utils::DepthMap depthCam  = utils::CreateDepthMap(DEPTH_MAP_TEXTURE_SIZE);
 
@@ -106,11 +110,11 @@ int main(int argc, char* argv[]) {
   utils::SetUniformVec3(shaderScene, "camLight_color", vec3(1.0f, 1.0f, 0.6f));
   utils::SetUniform1f (shaderScene, "camLight_cutoff_inner", cos(radians(10.0f)));
   utils::SetUniform1f (shaderScene, "camLight_cutoff_outer", cos(radians(14.0f)));
-  utils::SetUniform1f (shaderScene, "camLight_intensity",    3.0f);
+  utils::SetUniform1f (shaderScene, "camLight_intensity",    6.0f);
 
-  float camNear = 0.03f, camFar = 100.0f;
-    glm::mat4 camLightProj = glm::perspective(glm::radians(14.f * 2.0f), 1.0f, camNear, camFar);
-    glm::mat4 camLightView = glm::lookAt(cameraPosition, cameraPosition + cameraLookAt, cameraUp);
+
+    glm::mat4 camLightProj = glm::perspective(glm::radians(14.f * 2.0f), 1.0f, 0.3f, 80.f);
+    glm::mat4 camLightView = glm::lookAt(cameraPosition + vec3(0.f, 2.f, 0.f), cameraPosition + vec3(0.f, 2.f, 0.f) + cameraLookAt, cameraUp);
     glm::mat4 camLightProjView = camLightProj * camLightView;
 
 
@@ -148,11 +152,11 @@ int main(int argc, char* argv[]) {
     
 
 
-    vec3 lightPosition = vec3(30.f,50.0f,5.0f);
+    vec3 lightPosition = vec3(30.f,60.0f,5.0f);
     vec3 lightFocus(0, 0, -1);
     vec3 lightDirection = normalize(lightFocus - lightPosition);
-    float lightNearPlane = 0.01f, lightFarPlane = 400.0f;
-    mat4 lightProjMatrix = perspective(radians(100.0f),
+    float lightNearPlane = 1.f, lightFarPlane = 150.0f;
+    mat4 lightProjMatrix = perspective(radians(80.0f),
       (float)DEPTH_MAP_TEXTURE_SIZE /(float)DEPTH_MAP_TEXTURE_SIZE,
       lightNearPlane, lightFarPlane);
     mat4 lightViewMatrix = lookAt(lightPosition, lightFocus, vec3(0,1,0));
@@ -183,12 +187,15 @@ int main(int argc, char* argv[]) {
     glBindFramebuffer(GL_FRAMEBUFFER, depth.fbo);
     glClear(GL_DEPTH_BUFFER_BIT);
     glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(2.0f, 4.0f);
-    glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 1.f, 1.f);
-    // glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 10.0f, 10.0f);
+    
+    // glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 15.0f, 15.0f);
     utils::DrawFloorShadowOnly(floorMesh, shaderShadow, lightProjView);
     
+    utils::DrawCubeShadowOnly(cubeMesh,shaderShadow, lightProjView);
+    
+    
     utils::DrawTankShadowOnly(tankPosition, tankLookAt, tankMesh, shaderShadow, lightProjView);
+    glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 1.f, 1.f);
 
 
 
@@ -198,7 +205,7 @@ int main(int argc, char* argv[]) {
     }
       for (auto& b : bullets) {
         if (!b.isAlive()) continue;
-        utils::DrawBulletShadowOnly(b, bulletMesh, shaderShadow, lightProjView);
+        // utils::DrawBulletShadowOnly(b, bulletMesh, shaderShadow, lightProjView);
         for (auto& p : planes) {
           if (!p.isAlive()) continue;
           else if (glm::distance(b.position(), p.position()) < 3.f){
@@ -206,48 +213,56 @@ int main(int argc, char* argv[]) {
           }
         }
     }
+    // (SHADOW PASS 2)
     glViewport(0, 0, depthCam.size, depthCam.size);
     glBindFramebuffer(GL_FRAMEBUFFER, depthCam.fbo);
     glClear(GL_DEPTH_BUFFER_BIT);
 
     utils::DrawFloorShadowOnly(floorMesh, shaderShadow, camLightProjView);
+    
     utils::DrawTankShadowOnly(tankPosition, tankLookAt, tankMesh, shaderShadow, camLightProjView);
+    utils::DrawCubeShadowOnly(cubeMesh,shaderShadow, camLightProjView);
     for (const auto& p : planes) if (p.isAlive()) utils::DrawPlaneShadowOnly(p, meshes, shaderShadow, camLightProjView, propSpinDeg);
 
-    glDisable(GL_POLYGON_OFFSET_FILL);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0); 
-    glDisable(GL_POLYGON_OFFSET_FILL);
     
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 
     // SCENE PASS!!!
     glUseProgram(shaderScene);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);\
+    int fbw, fbh;
+    glfwGetFramebufferSize(window, &fbw, &fbh);
+    glViewport(0, 0, fbw, fbh);
     glClearColor(0.2f, 0.35f, 0.7f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    utils::BindShadowMap(depth.texture, depthCam.texture); //binds to tex unit 1,2 by default
     glm::vec3 camPos = cameraPosition;
     glm::vec3 camDir = glm::normalize(cameraLookAt);
     vec3 cameraSideVector = normalize(glm::cross(cameraLookAt, vec3(0,1,0)));
     if (floodLightOn){
 
       utils::SetUniformVec3(shaderScene, "camLight_position",   camPos);
-      utils::SetUniformVec3(shaderScene, "camLight_direction",  glm::rotate(mat4(1.f), radians(20.f), normalize(cameraUp))* glm::rotate(mat4(1.f), radians(-20.f), normalize(cameraSideVector)) * vec4(camDir, 1.f));
+      utils::SetUniformVec3(shaderScene, "camLight_direction",  camDir);
       utils::SetUniformVec3(shaderScene, "camLight_color",      glm::vec3(1.0f, 1.0f, 0.6f));
-      utils::SetUniform1f (shaderScene, "camLight_intensity",   3.0f);
+      utils::SetUniform1f (shaderScene, "camLight_intensity",   6.0f);
       utils::SetUniform1f (shaderScene, "camLight_cutoff_inner", cos(glm::radians(10.0f)));
       utils::SetUniform1f (shaderScene, "camLight_cutoff_outer", cos(glm::radians(14.0f)));
-      glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 1.0f, 1.0f);
+      // 
     }
     else {utils::SetUniform1f (shaderScene, "camLight_intensity",   0.0f);}
 
 
-
-    utils::BindShadowMap(depth.texture, depthCam.texture); //binds to tex unit 1 by default
-    glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 10.0f, 10.0f);
+    
+    glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 15.0f, 15.0f);
+    utils::DrawCubeSceneOnly(cubeMesh, shaderScene);
 
     utils::DrawFloorSceneOnly(floorMesh, shaderScene);
+    
     glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 1.0f, 1.0f);
     utils::DrawTankSceneOnly(tankPosition, tankLookAt, tankMesh, shaderScene);
+    
+   
     for (const auto& p : planes) {
       if (!p.isAlive()) continue;
       utils::DrawPlaneSceneOnly(p, meshes, shaderScene, propSpinDeg);
@@ -256,6 +271,7 @@ int main(int argc, char* argv[]) {
       if (!b.isAlive()) continue;
       utils::DrawBulletSceneOnly(b, bulletMesh, shaderScene);
     }
+    
     glfwSwapBuffers(window);
     glfwPollEvents();
 
@@ -278,15 +294,16 @@ int main(int argc, char* argv[]) {
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) tankPosition -= tankForward * (TANK_SPEED * dt);
     if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) floodLightOn = true;
     if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) floodLightOn = false;
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && gunCDTimer > 0.3f) {
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && gunCDTimer > 0.2f) {
       vec3 gunLookAt = cameraLookAt;
-      bullets.emplace_back(cameraPosition, glm::rotate(mat4(1.f), radians(20.f), normalize(cameraUp))* glm::rotate(mat4(1.f), radians(-20.f), normalize(cameraSideVector)) * vec4(gunLookAt, 1.f));
+      bullets.emplace_back(cameraPosition, gunLookAt);
       gunCDTimer = 0.f;
     }
     gunCDTimer += dt;
 
     tankLookAt = glm::normalize(tankForward);
     cameraPosition = tankPosition - vec3(0.f, -4.f, 0.f);
+    // cout<<cameraLookAt[0]<<","<<cameraLookAt[1]<<","<<cameraLookAt[2]<<"\n";
     
 
     

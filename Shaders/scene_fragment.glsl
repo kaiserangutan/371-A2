@@ -60,9 +60,14 @@ vec3 specular_color(vec3 light_color_arg, vec3 light_position_arg) {
 float shadow_scalar() {
     vec3 ndc = fragment_position_light_space.xyz / fragment_position_light_space.w;
     ndc = ndc * 0.5 + 0.5;
+    if (ndc.x < 0.0 || ndc.x > 1.0 ||
+        ndc.y < 0.0 || ndc.y > 1.0 ||
+        ndc.z < 0.0 || ndc.z > 1.0) {
+        return 1.0;
+    }
     float closest_depth = texture(shadow_map, ndc.xy).r;
     float current_depth = ndc.z;
-    float bias = 0.000012;
+    float bias = 0.002;
 
     return ((current_depth - bias) < closest_depth) ? 1.0 : 0.0;
 }
@@ -91,9 +96,14 @@ float spotlight_scalar_custom(vec3 Lpos, vec3 Ldir, float innerCos, float outerC
 float shadow_scalar_custom(vec4 lightSpacePos, sampler2D shadowTex) {
     vec3 ndc = lightSpacePos.xyz / lightSpacePos.w;
     ndc = ndc * 0.5 + 0.5;
+    if (ndc.x < 0.0 || ndc.x > 1.0 ||
+        ndc.y < 0.0 || ndc.y > 1.0 ||
+        ndc.z < 0.0 || ndc.z > 1.0) {
+        return 1.0;
+    }
     float closest_depth = texture(shadowTex, ndc.xy).r;
     float current_depth = ndc.z;
-    float bias = 0.0012;
+    float bias = 0.002;
     return ((current_depth - bias) < closest_depth) ? 1.0 : 0.0;
 }
 
