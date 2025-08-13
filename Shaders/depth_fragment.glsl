@@ -5,7 +5,7 @@ out vec4 FragColor;
 uniform bool showDepth = true;
       
 float near = 1.0f;
-float far  = 100.0f;
+float far  = 200.0f;
 float LinearizeDepth() 
 {
 //    // compute ndc coord, by default glDepthRange(0,1) \n

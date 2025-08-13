@@ -2,327 +2,312 @@
 #include <iostream>
 #include <vector>
 
-#define GLEW_STATIC 1  // This allows linking with Static Library on Windows, without DLL
-#include <GL/glew.h>   // Include GLEW - OpenGL Extension Wrangler
-#include <GLFW/glfw3.h>  // GLFW provides a cross-platform interface for creating a graphical context,
-// initializing OpenGL and binding inputs
+#define GLEW_STATIC 1
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
 
-#include <glm/glm.hpp>  // GLM is an optimized math library with syntax to similar to OpenGL Shading Language
-#include <glm/gtc/matrix_transform.hpp>  // include this to create transformation matrices
-#include <glm/gtc/type_ptr.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
-#include "OBJloader.h"    //For loading .obj files
-#include "OBJloaderV3.h"  //For loading .obj files using a polygon list format
 #include "shaderloader.h"
 #include "Airplane.h"
+#include "Bullet.h"
+#include "utils.hpp"       // <— new helpers
 
 using namespace glm;
 using namespace std;
 
-// window dimensions
 const GLuint WIDTH = 1024, HEIGHT = 768;
-
-vec3 computeCameraLookAt(double &lastMousePosX, double &lastMousePosY, float dt);
-
-GLuint setupModelVBO(string path, int& vertexCount);
-
-// Sets up a model using an Element Buffer Object to refer to vertex data
-GLuint setupModelEBO(string path, int& vertexCount);
-
-// shader variable setters
-void SetUniformMat4(GLuint shader_id, const char* uniform_name,
-                    mat4 uniform_value) {
-  glUseProgram(shader_id);
-  glUniformMatrix4fv(glGetUniformLocation(shader_id, uniform_name), 1, GL_FALSE,
-                     &uniform_value[0][0]);
-}
-
-void SetUniformVec3(GLuint shader_id, const char* uniform_name,
-                    vec3 uniform_value) {
-  glUseProgram(shader_id);
-  glUniform3fv(glGetUniformLocation(shader_id, uniform_name), 1,
-               value_ptr(uniform_value));
-}
-
-template <class T>
-void SetUniform1Value(GLuint shader_id, const char* uniform_name,
-                      T uniform_value) {
-  glUseProgram(shader_id);
-  glUniform1i(glGetUniformLocation(shader_id, uniform_name), uniform_value);
-  glUseProgram(0);
-}
 
 GLFWwindow* window = nullptr;
 bool InitContext();
 
+vec3 computeCameraLookAt(double &lastMousePosX, double &lastMousePosY, float dt);
 
-
-struct PlaneMeshes {
-  GLuint planeVAO;  int planeVertices;
-  GLuint propVAO;   int propVertices;
-};
-
-// shared base model for plane + prop using plane state.
-// T(pos) * Y(yaw) * Br(roll) * Fix(model axis adjut) * scale
-static inline glm::mat4 BuildPlaneBaseModel(const Airplane& p) {
-  const mat4 T   = translate(mat4(1.f), p.position());
-  const mat4 Y   = p.velocityYawMatrix();
-  const mat4 Br  = rotate(mat4(1.f), radians(-p.bankRollDeg()), vec3(0,0,1));
-  const mat4 Fix = rotate(mat4(1.f), radians(-90.f), vec3(1,0,0));
-  const mat4 S   = scale(mat4(1.f), vec3(0.2f));
-  return T * Y * Br * Fix * S;
-}
-
-static inline void DrawPlaneShadowOnly(const Airplane& p,
-                                       const PlaneMeshes& mesh,
-                                       GLuint shaderShadow,
-                                       const glm::mat4& lightProjView,
-                                       float propSpinDeg)
-{
-  const mat4 base = BuildPlaneBaseModel(p);
-
-  const mat4 planeModel = base;
-  const mat4 propModel  = base *
-      translate(mat4(1.f), vec3(0.f, -15.0f, 0.8f)) *
-      rotate(mat4(1.f), radians(propSpinDeg * 50.f), vec3(0,1,0)) *
-      scale(mat4(1.f), vec3(1.3f));
-
-  // plane
-  SetUniformMat4(shaderShadow, "transform_in_light_space", lightProjView * planeModel);
-  glBindVertexArray(mesh.planeVAO);
-  glDrawArrays(GL_TRIANGLES, 0, mesh.planeVertices);
-  glBindVertexArray(0);
-
-  // prop
-  SetUniformMat4(shaderShadow, "transform_in_light_space", lightProjView * propModel);
-  glBindVertexArray(mesh.propVAO);
-  glDrawArrays(GL_TRIANGLES, 0, mesh.propVertices);
-  glBindVertexArray(0);
-}
-
-static inline void DrawPlaneSceneOnly(const Airplane& p,
-                                      const PlaneMeshes& mesh,
-                                      GLuint shaderScene,
-                                      float propSpinDeg)
-{
-  const mat4 base = BuildPlaneBaseModel(p);
-
-  const mat4 planeModel = base;
-  const mat4 propModel  = base *
-      translate(mat4(1.f), vec3(0.f, -15.0f, 0.8f)) *
-      rotate(mat4(1.f), radians(propSpinDeg * 50.f), vec3(0,1,0)) *
-      scale(mat4(1.f), vec3(1.3f));
-
-  // plane
-  SetUniformMat4(shaderScene, "model_matrix", planeModel);
-  glBindVertexArray(mesh.planeVAO);
-  glDrawArrays(GL_TRIANGLES, 0, mesh.planeVertices);
-  glBindVertexArray(0);
-
-  // prop
-  SetUniformMat4(shaderScene, "model_matrix", propModel);
-  glBindVertexArray(mesh.propVAO);
-  glDrawArrays(GL_TRIANGLES, 0, mesh.propVertices);
-  glBindVertexArray(0);
-}
 
 int main(int argc, char* argv[]) {
+  
   if (!InitContext()) return -1;
-
-    // sky color blue
-  glClearColor(0.2f, 0.35f, 0.7f, 1.0f);
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
   std::string shaderPathPrefix = "Shaders/";
-
-  GLuint shaderScene = loadSHADER(shaderPathPrefix + "scene_vertex.glsl",
-                                  shaderPathPrefix + "scene_fragment.glsl");
-
+  GLuint shaderScene  = loadSHADER(shaderPathPrefix + "scene_vertex.glsl",
+                                   shaderPathPrefix + "scene_fragment.glsl");
   GLuint shaderShadow = loadSHADER(shaderPathPrefix + "shadow_vertex.glsl",
                                    shaderPathPrefix + "shadow_fragment.glsl");
 
-  string planePath = "Models/airplane2.obj";
-  string propPath = "Models/propeller3.obj";
+  // Models
+  string planePath = "Models/airplane3.obj";
+  string propPath  = "Models/propeller3.obj";
+  string cubePath = "Models/cube.obj";
+  string tankPath = "Models/tank.obj";
 
-  int planeVertices;
-  int propVertices;
-  GLuint planeVAO = setupModelVBO(planePath, planeVertices);
-  GLuint propVAO  = setupModelVBO(propPath, propVertices);
+  utils::Mesh tankMesh = utils::SetupModelVBO(tankPath);
+  utils::Mesh floorMesh = utils::SetupModelVBO(cubePath);
+  utils::Mesh cubeMesh = utils::SetupModelVBO(cubePath);
+  utils::Mesh bulletMesh = utils::SetupModelVBO(cubePath);
+  utils::Mesh planeMesh = utils::SetupModelVBO(planePath);
+  utils::Mesh propMesh  = utils::SetupModelVBO(propPath);
+  utils::PlaneMeshes meshes{ planeMesh, propMesh };
 
-  PlaneMeshes meshes{ planeVAO, planeVertices, propVAO, propVertices };
+  string floorTexturePath = "Textures/desert.jpg";
+  string bulletTexturePath = "Textures/brass.jpg";
+  string tankTexturePath = "Textures/camo2.jpg";
+  string planeTexturePath = "Textures/camo2.jpg";
+  string propTexturePath = "Textures/steel.png";
+  string cubeTexturePath = "Textures/brick.jpg";
 
+  
+  cubeMesh.texture = utils::LoadTexture2D(cubeTexturePath);
+  tankMesh.texture = utils::LoadTexture2D(tankTexturePath);
+  bulletMesh.texture = utils::LoadTexture2D(bulletTexturePath);
+  meshes.plane.texture = utils::LoadTexture2D(planeTexturePath);
+  meshes.prop.texture  = utils::LoadTexture2D(propTexturePath);
+  floorMesh.texture = utils::LoadTexture2D(floorTexturePath);
 
-  std::vector<Airplane> planes;
-  planes.emplace_back(glm::vec3( 0.f, 20.f, -30.f));
-  planes.emplace_back(glm::vec3(8.f, 25.f, -30.f));
-  planes.emplace_back(glm::vec3(-8.f, 22.f, -30.f));
-
-  // texture and framebuffer for shadow map
-
-  const unsigned int DEPTH_MAP_TEXTURE_SIZE = 1024;
-
-  // index to texture used for shadow mapping
-  GLuint depth_map_texture;
-  glGenTextures(1, &depth_map_texture);
-  glBindTexture(GL_TEXTURE_2D, depth_map_texture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, DEPTH_MAP_TEXTURE_SIZE,
-               DEPTH_MAP_TEXTURE_SIZE, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-  // index to framebuffer used for shadow mapping
-  GLuint depth_map_fbo;
-  glGenFramebuffers(1, &depth_map_fbo);
-  glBindFramebuffer(GL_FRAMEBUFFER, depth_map_fbo);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
-                         depth_map_texture, 0);
-  glDrawBuffer(GL_NONE);  // disable rendering colors, only write depth values
+  // depth map for shadows
+  const unsigned int DEPTH_MAP_TEXTURE_SIZE = 1440;
+  utils::DepthMap depth = utils::CreateDepthMap(DEPTH_MAP_TEXTURE_SIZE);
+  utils::DepthMap depthCam  = utils::CreateDepthMap(DEPTH_MAP_TEXTURE_SIZE);
 
 
-  vec3 cameraPosition(0.6f, 1.0f, 2.0f);
+  vec3 cameraPosition(0.6f, 2.f, 2.0f);
+  vec3 tankPosition = cameraPosition + vec3(0.f, -2.1f, 0.f);
   vec3 cameraLookAt(0.0f, 0.0f, -1.0f);
+  vec3 tankLookAt = cameraLookAt;
   vec3 cameraUp(0.0f, 1.0f, 0.0f);
-
-
-  float cameraSpeed = 1.0f;
+  float cameraSpeed = 10.0f;
   float cameraFastSpeed = 3 * cameraSpeed;
 
-
-  float spinningAngle = 0.0f;
-
-
-  mat4 projectionMatrix =
-      glm::perspective(radians(70.0f),
-                       WIDTH * 1.0f / HEIGHT,
-                       0.01f, 800.0f);
+  mat4 tankViewMatrix = lookAt(tankPosition, tankPosition + tankLookAt, vec3(0,1,0));
+  float tankYaw = std::atan2(tankLookAt.x, -tankLookAt.z); 
+  const float TANK_SPEED = 10.0f;                          
+  const float TANK_TURN_SPEED = glm::radians(90.0f); 
 
 
-  mat4 viewMatrix = lookAt(cameraPosition,                 // eye
-                           cameraPosition + cameraLookAt,  // center
-                           cameraUp);                      // up
+  mat4 projectionMatrix = perspective(radians(75.0f), WIDTH * 1.0f / HEIGHT, 0.01f, 400.0f);
+  mat4 viewMatrix = lookAt(cameraPosition, cameraPosition + cameraLookAt, cameraUp);
 
 
-  SetUniformMat4(shaderScene, "projection_matrix", projectionMatrix);
+  utils::SetUniformMat4(shaderScene, "projection_matrix", projectionMatrix);
+  utils::SetUniformMat4(shaderScene, "view_matrix", viewMatrix);
 
-
-  SetUniformMat4(shaderScene, "view_matrix", viewMatrix);
-
-  float lightAngleOuter = radians(30.0f);
-  float lightAngleInner = radians(20.0f);
-  
-  SetUniform1Value(shaderScene, "light_cutoff_inner", cos(lightAngleInner));
-  SetUniform1Value(shaderScene, "light_cutoff_outer", cos(lightAngleOuter));
+  float lightAngleOuter = radians(100.0f);
+  float lightAngleInner = radians(99.0f);
+  utils::SetUniform1f(shaderScene, "light_cutoff_inner", cos(lightAngleInner));
+  utils::SetUniform1f(shaderScene, "light_cutoff_outer", cos(lightAngleOuter));
+  utils::SetUniformVec3(shaderScene, "light_color", vec3(1.f, 1.f, .95f));
+  utils::SetUniformVec3(shaderScene, "object_color", vec3(1));
 
   
-  SetUniformVec3(shaderScene, "light_color", vec3(1));
 
-  
-  SetUniformVec3(shaderScene, "object_color", vec3(1));
+  // tell shader which texture units to use
+  utils::SetUniform1i(shaderScene, "albedo_tex", 0); // albedo on unit 0
+  utils::SetUniform1i(shaderScene, "shadow_map", 1); // shadow map on unit 1
+  utils::SetUniform1i(shaderScene, "cam_shadow_map", 2); // floodlight shadow map on unit 2
 
-  
+  // for camera floodlight
+  utils::SetUniformVec3(shaderScene, "camLight_color", vec3(1.0f, 1.0f, 0.6f));
+  utils::SetUniform1f (shaderScene, "camLight_cutoff_inner", cos(radians(10.0f)));
+  utils::SetUniform1f (shaderScene, "camLight_cutoff_outer", cos(radians(14.0f)));
+  utils::SetUniform1f (shaderScene, "camLight_intensity",    6.0f);
+
+
+    glm::mat4 camLightProj = glm::perspective(glm::radians(14.f * 2.0f), 1.0f, 0.3f, 80.f);
+    glm::mat4 camLightView = glm::lookAt(cameraPosition + vec3(0.f, 2.f, 0.f), cameraPosition + vec3(0.f, 2.f, 0.f) + cameraLookAt, cameraUp);
+    glm::mat4 camLightProjView = camLightProj * camLightView;
+
+
   float lastFrameTime = glfwGetTime();
-  int lastMouseLeftState = GLFW_RELEASE;
+
   double lastMousePosX, lastMousePosY;
   glfwGetCursorPos(window, &lastMousePosX, &lastMousePosY);
 
-  
   glEnable(GL_DEPTH_TEST);
-  glEnable(GL_CULL_FACE);
 
+  // Make some planes
+  std::vector<Airplane> planes;
+  std::vector<Bullet> bullets;
+  
+
+  float propSpinDeg = 0.f;
+  float planeSpawnTimer = 4.f;
+  float gunCDTimer = 0.f;
+
+  bool floodLightOn = false;
+  
 
   while (!glfwWindowShouldClose(window)) {
-
     float dt = glfwGetTime() - lastFrameTime;
     lastFrameTime = glfwGetTime();
+    propSpinDeg += 45.f * dt;
+    
+    if (planeSpawnTimer > 4.f){
+      planes.emplace_back(glm::vec3(10.f, 20.f, -30.f));
+      planes.emplace_back(glm::vec3(-8.f, 23.f, -25.f));
+      planeSpawnTimer = 0.f;
+      
+    }
+    planeSpawnTimer += dt;
+    
 
-    // light parameters
-    float phi = glfwGetTime() * 0.5f * 3.14f;
-    vec3 lightPosition = vec3(0.6f, 50.0f, 5.0f);
-    vec3 lightFocus(0, -1, -1);  // light aiming direction
+
+    vec3 lightPosition = vec3(30.f,60.0f,5.0f);
+    vec3 lightFocus(0, 0, -1);
     vec3 lightDirection = normalize(lightFocus - lightPosition);
+    float lightNearPlane = 1.f, lightFarPlane = 150.0f;
+    mat4 lightProjMatrix = perspective(radians(80.0f),
+      (float)DEPTH_MAP_TEXTURE_SIZE /(float)DEPTH_MAP_TEXTURE_SIZE,
+      lightNearPlane, lightFarPlane);
+    mat4 lightViewMatrix = lookAt(lightPosition, lightFocus, vec3(0,1,0));
+    mat4 lightProjView   = lightProjMatrix * lightViewMatrix;
 
-    float lightNearPlane = 0.01f;
-    float lightFarPlane = 400.0f;
+    
+    
 
-    mat4 lightProjMatrix =
-      perspective(50.0f, (float)DEPTH_MAP_TEXTURE_SIZE /(float)DEPTH_MAP_TEXTURE_SIZE, lightNearPlane, lightFarPlane);
-    mat4 lightViewMatrix = lookAt(lightPosition, lightFocus, vec3(0, 1, 0));
+    utils::SetUniformMat4(shaderScene, "light_proj_view_matrix", lightProjView);
+    utils::SetUniformMat4(shaderScene, "camLight_proj_view_matrix", camLightProjView);
+    utils::SetUniform1f(shaderScene, "light_near_plane", lightNearPlane);
+    utils::SetUniform1f(shaderScene, "light_far_plane",  lightFarPlane);
+    utils::SetUniformVec3(shaderScene, "light_position",  lightPosition);
+    utils::SetUniformVec3(shaderScene, "light_direction", lightDirection);
 
-    SetUniformMat4(shaderScene, "light_proj_view_matrix", lightProjMatrix * lightViewMatrix);
-    SetUniform1Value(shaderScene, "light_near_plane", lightNearPlane);
-    SetUniform1Value(shaderScene, "light_far_plane", lightFarPlane);
-    SetUniformVec3(shaderScene, "light_position", lightPosition);
-    SetUniformVec3(shaderScene, "light_direction", lightDirection);
-
-    // Propeller spin driver
-    spinningAngle += 45.0f * dt;  // degrees per second
-
-    // Update all planes
+    
     for (auto& p : planes) p.update(dt);
+    for (auto& b : bullets) b.update(dt);
 
-    // Set the view matrix for first person camera and send to scene shader
-    mat4 viewMatrix = lookAt(cameraPosition, cameraPosition + cameraLookAt, cameraUp);
-    SetUniformMat4(shaderScene, "view_matrix", viewMatrix);
+    
+    viewMatrix = lookAt(cameraPosition, cameraPosition + cameraLookAt, cameraUp);
+    utils::SetUniformMat4(shaderScene, "view_matrix", viewMatrix);
+    utils::SetUniformVec3(shaderScene, "view_position", cameraPosition);
 
-    // Precompute L*V
-    mat4 lightProjView = lightProjMatrix * lightViewMatrix;
-
-    // ---------- 1) SHADOW PASS: clear once, draw all planes ----------
+    // SHADOW PASS!!!
     glUseProgram(shaderShadow);
-    glViewport(0, 0, DEPTH_MAP_TEXTURE_SIZE, DEPTH_MAP_TEXTURE_SIZE);
-    glBindFramebuffer(GL_FRAMEBUFFER, depth_map_fbo);
+    glViewport(0, 0, depth.size, depth.size);
+    glBindFramebuffer(GL_FRAMEBUFFER, depth.fbo);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    
+    // glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 15.0f, 15.0f);
+    utils::DrawFloorShadowOnly(floorMesh, shaderShadow, lightProjView);
+    
+    utils::DrawCubeShadowOnly(cubeMesh,shaderShadow, lightProjView);
+    
+    
+    utils::DrawTankShadowOnly(tankPosition, tankLookAt, tankMesh, shaderShadow, lightProjView);
+    glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 1.f, 1.f);
+
+
+
+    for (const auto& p : planes) {
+      if (!p.isAlive()) continue;
+      utils::DrawPlaneShadowOnly(p, meshes, shaderShadow, lightProjView, propSpinDeg);
+    }
+      for (auto& b : bullets) {
+        if (!b.isAlive()) continue;
+        // utils::DrawBulletShadowOnly(b, bulletMesh, shaderShadow, lightProjView);
+        for (auto& p : planes) {
+          if (!p.isAlive()) continue;
+          else if (glm::distance(b.position(), p.position()) < 3.f){
+            b.kill();p.kill();
+          }
+        }
+    }
+    // (SHADOW PASS 2)
+    glViewport(0, 0, depthCam.size, depthCam.size);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthCam.fbo);
     glClear(GL_DEPTH_BUFFER_BIT);
 
-    for (const auto& p : planes) {
-      if (!p.isAlive()) continue;
-      DrawPlaneShadowOnly(p, meshes, shaderShadow, lightProjView, spinningAngle);
-    }
+    utils::DrawFloorShadowOnly(floorMesh, shaderShadow, camLightProjView);
+    
+    utils::DrawTankShadowOnly(tankPosition, tankLookAt, tankMesh, shaderShadow, camLightProjView);
+    utils::DrawCubeShadowOnly(cubeMesh,shaderShadow, camLightProjView);
+    for (const auto& p : planes) if (p.isAlive()) utils::DrawPlaneShadowOnly(p, meshes, shaderShadow, camLightProjView, propSpinDeg);
 
-    // ---------- 2) SCENE PASS: clear once, draw all planes ----------
-    glUseProgram(shaderScene);
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
-    glViewport(0, 0, width, height);
+    
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+    // SCENE PASS!!!
+    glUseProgram(shaderScene);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);\
+    int fbw, fbh;
+    glfwGetFramebufferSize(window, &fbw, &fbh);
+    glViewport(0, 0, fbw, fbh);
     glClearColor(0.2f, 0.35f, 0.7f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    utils::BindShadowMap(depth.texture, depthCam.texture); //binds to tex unit 1,2 by default
+    glm::vec3 camPos = cameraPosition;
+    glm::vec3 camDir = glm::normalize(cameraLookAt);
+    vec3 cameraSideVector = normalize(glm::cross(cameraLookAt, vec3(0,1,0)));
+    if (floodLightOn){
 
+      utils::SetUniformVec3(shaderScene, "camLight_position",   camPos);
+      utils::SetUniformVec3(shaderScene, "camLight_direction",  camDir);
+      utils::SetUniformVec3(shaderScene, "camLight_color",      glm::vec3(1.0f, 1.0f, 0.6f));
+      utils::SetUniform1f (shaderScene, "camLight_intensity",   6.0f);
+      utils::SetUniform1f (shaderScene, "camLight_cutoff_inner", cos(glm::radians(10.0f)));
+      utils::SetUniform1f (shaderScene, "camLight_cutoff_outer", cos(glm::radians(14.0f)));
+      // 
+    }
+    else {utils::SetUniform1f (shaderScene, "camLight_intensity",   0.0f);}
+
+
+    
+    glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 15.0f, 15.0f);
+    utils::DrawCubeSceneOnly(cubeMesh, shaderScene);
+
+    utils::DrawFloorSceneOnly(floorMesh, shaderScene);
+    
+    glUniform2f(glGetUniformLocation(shaderScene, "uv_scale"), 1.0f, 1.0f);
+    utils::DrawTankSceneOnly(tankPosition, tankLookAt, tankMesh, shaderScene);
+    
+   
     for (const auto& p : planes) {
       if (!p.isAlive()) continue;
-      DrawPlaneSceneOnly(p, meshes, shaderScene, spinningAngle);
+      utils::DrawPlaneSceneOnly(p, meshes, shaderScene, propSpinDeg);
     }
-
+    for (const auto& b : bullets) {
+      if (!b.isAlive()) continue;
+      utils::DrawBulletSceneOnly(b, bulletMesh, shaderScene);
+    }
+    
     glfwSwapBuffers(window);
     glfwPollEvents();
 
-    
+    // Input
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
       glfwSetWindowShouldClose(window, true);
 
-    
     bool fastCam = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
                    glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
     float currentCameraSpeed = (fastCam) ? cameraFastSpeed : cameraSpeed;
 
     cameraLookAt = computeCameraLookAt(lastMousePosX, lastMousePosY, dt);
-        
-    vec3 cameraSideVector = glm::cross(cameraLookAt, vec3(0.0f, 1.0f, 0.0f));
-    glm::normalize(cameraSideVector);
+    
+
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) tankYaw += TANK_TURN_SPEED * dt;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) tankYaw -= TANK_TURN_SPEED * dt;
+    glm::vec3 tankForward = glm::vec3(std::sin(tankYaw), 0.0f, -std::cos(tankYaw));
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) tankPosition += tankForward * (TANK_SPEED * dt);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) tankPosition -= tankForward * (TANK_SPEED * dt);
+    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) floodLightOn = true;
+    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS) floodLightOn = false;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && gunCDTimer > 0.2f) {
+      vec3 gunLookAt = cameraLookAt;
+      bullets.emplace_back(cameraPosition, gunLookAt);
+      gunCDTimer = 0.f;
+    }
+    gunCDTimer += dt;
+
+    tankLookAt = glm::normalize(tankForward);
+    cameraPosition = tankPosition - vec3(0.f, -4.f, 0.f);
+    // cout<<cameraLookAt[0]<<","<<cameraLookAt[1]<<","<<cameraLookAt[2]<<"\n";
+    
 
     
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-      cameraPosition += cameraLookAt * dt * currentCameraSpeed;
-    }
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-      cameraPosition -= cameraLookAt * dt * currentCameraSpeed;
-    }
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-      cameraPosition += cameraSideVector * dt * currentCameraSpeed;
-    }
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-      cameraPosition -= cameraSideVector * dt * currentCameraSpeed;
-    }
+      
   }
 
   glfwTerminate();
@@ -330,141 +315,40 @@ int main(int argc, char* argv[]) {
 }
 
 vec3 computeCameraLookAt(double &lastMousePosX, double &lastMousePosY, float dt) {
-  
-  double mousePosX, mousePosY;
-  glfwGetCursorPos(window, &mousePosX, &mousePosY);
+      // - Calculate mouse motion dx and dy
+    // - Update camera horizontal and vertical angle
+    double mousePosX, mousePosY;
+    glfwGetCursorPos(window, &mousePosX, &mousePosY);
 
-  double dx = mousePosX - lastMousePosX;
-  double dy = mousePosY - lastMousePosY;
+    double dx = mousePosX - lastMousePosX;
+    double dy = mousePosY - lastMousePosY;
 
-  lastMousePosX = mousePosX;
-  lastMousePosY = mousePosY;
+    lastMousePosX = mousePosX;
+    lastMousePosY = mousePosY;
 
-  
-  const float cameraAngularSpeed = 120.0f;
-  static float cameraHorizontalAngle = 90.0f;
-  static float cameraVerticalAngle = 0.0f;
-  cameraHorizontalAngle -= (float)dx * cameraAngularSpeed * dt;
-  cameraVerticalAngle   -= (float)dy * cameraAngularSpeed * dt;
+    // Convert to spherical coordinates
+    const float cameraAngularSpeed = 120.0f;
+    static float cameraHorizontalAngle = 90.0f;
+    static float cameraVerticalAngle = 0.0f;
+    cameraHorizontalAngle -= dx * cameraAngularSpeed * dt;
+    cameraVerticalAngle -= dy * cameraAngularSpeed * dt;
 
-  
-  cameraVerticalAngle = glm::max(-85.0f, glm::min(85.0f, cameraVerticalAngle));
+    // Clamp vertical angle to [-85, 85] degrees
+    cameraVerticalAngle =
+        glm::max(-85.0f, glm::min(85.0f, cameraVerticalAngle));
 
-  float theta = radians(cameraHorizontalAngle);
-  float phi   = radians(cameraVerticalAngle);
+    float theta = radians(cameraHorizontalAngle);
+    float phi = radians(cameraVerticalAngle);
 
-  return vec3(cosf(phi) * cosf(theta), sinf(phi), -cosf(phi) * sinf(theta));
+    return vec3(cosf(phi) * cosf(theta), sinf(phi), -cosf(phi) * sinf(theta));
 }
-
-GLuint setupModelVBO(string path, int& vertexCount) {
-  std::vector<glm::vec3> vertices;
-  std::vector<glm::vec3> normals;
-  std::vector<glm::vec2> UVs;
-
-  // read vertex data from OBJ
-  loadOBJ(path.c_str(), vertices, normals, UVs);
-
-  GLuint VAO;
-  glGenVertexArrays(1, &VAO);
-  glBindVertexArray(VAO);  // becomes active VAO
-
-  // ver VBO setup
-  GLuint vertices_VBO;
-  glGenBuffers(1, &vertices_VBO);
-  glBindBuffer(GL_ARRAY_BUFFER, vertices_VBO);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3),
-               &vertices.front(), GL_STATIC_DRAW);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                        (GLvoid*)0);
-  glEnableVertexAttribArray(0);
-
-  // norm VBO setup
-  GLuint normals_VBO;
-  glGenBuffers(1, &normals_VBO);
-  glBindBuffer(GL_ARRAY_BUFFER, normals_VBO);
-  glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(glm::vec3),
-               &normals.front(), GL_STATIC_DRAW);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                        (GLvoid*)0);
-  glEnableVertexAttribArray(1);
-
-  // UVs VBO setup
-  GLuint uvs_VBO;
-  glGenBuffers(1, &uvs_VBO);
-  glBindBuffer(GL_ARRAY_BUFFER, uvs_VBO);
-  glBufferData(GL_ARRAY_BUFFER, UVs.size() * sizeof(glm::vec2), &UVs.front(),
-               GL_STATIC_DRAW);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-                        (GLvoid*)0);
-  glEnableVertexAttribArray(2);
-
-  glBindVertexArray(0);
-  vertexCount = (int)vertices.size();
-  return VAO;
-}
-
-GLuint setupModelEBO(string path, int& vertexCount) {
-  vector<int> vertexIndices;
-  vector<glm::vec3> vertices;
-  vector<glm::vec3> normals;
-  vector<glm::vec2> UVs;
-
-  loadOBJ2(path.c_str(), vertexIndices, vertices, normals, UVs);
-
-  GLuint VAO;
-  glGenVertexArrays(1, &VAO);
-  glBindVertexArray(VAO);  // becomes active VAO
-
-  // ver VBO setup
-  GLuint vertices_VBO;
-  glGenBuffers(1, &vertices_VBO);
-  glBindBuffer(GL_ARRAY_BUFFER, vertices_VBO);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3),
-               &vertices.front(), GL_STATIC_DRAW);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                        (GLvoid*)0);
-  glEnableVertexAttribArray(0);
-
-  // norm VBO setup
-  GLuint normals_VBO;
-  glGenBuffers(1, &normals_VBO);
-  glBindBuffer(GL_ARRAY_BUFFER, normals_VBO);
-  glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(glm::vec3),
-               &normals.front(), GL_STATIC_DRAW);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                        (GLvoid*)0);
-  glEnableVertexAttribArray(1);
-
-  // UVs VBO setup
-  GLuint uvs_VBO;
-  glGenBuffers(1, &uvs_VBO);
-  glBindBuffer(GL_ARRAY_BUFFER, uvs_VBO);
-  glBufferData(GL_ARRAY_BUFFER, UVs.size() * sizeof(glm::vec2), &UVs.front(),
-               GL_STATIC_DRAW);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-                        (GLvoid*)0);
-  glEnableVertexAttribArray(2);
-
-  // EBO setup
-  GLuint EBO;
-  glGenBuffers(1, &EBO);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, vertexIndices.size() * sizeof(int),
-               &vertexIndices.front(), GL_STATIC_DRAW);
-
-  glBindVertexArray(0);
-  vertexCount = (int)vertexIndices.size();
-  return VAO;
-}
-
 bool InitContext() {
-
   glfwInit();
 
 
-  window = glfwCreateWindow(WIDTH, HEIGHT, "Assignment2", NULL, NULL);
-  if (window == NULL) {
-    std::cerr << "Failed to create GLFW window" << std::endl;
+  window = glfwCreateWindow(WIDTH, HEIGHT, "Assignment 2", NULL, NULL);
+  if (!window) {
+    std::cerr << "Failed to create GLFW window\n";
     glfwTerminate();
     return false;
   }
@@ -473,10 +357,9 @@ bool InitContext() {
 
   glewExperimental = true;
   if (glewInit() != GLEW_OK) {
-    std::cerr << "Failed to create GLEW" << std::endl;
+    std::cerr << "Failed to create GLEW\n";
     glfwTerminate();
     return false;
   }
-
   return true;
 }

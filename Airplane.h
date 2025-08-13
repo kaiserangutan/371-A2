@@ -13,8 +13,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 
-constexpr float TURN_ANGULAR_ACCEL = 20.f;   // deg/s^2
+constexpr float TURN_ANGULAR_ACCEL = 40.f;   // deg/s^2
 constexpr float MAX_TURN_RATE      = 90.f;  // deg/s
+constexpr float LIFESPAN      = 30.f;
 
 
 inline float randomPick() {
@@ -33,18 +34,24 @@ private:
     float currentTurnDir{0.f};   // -1, 0, or 1
     float dirTimer{0.f};         // seconds since last change
 
+    float age{0.f};
+
 public:
     explicit Airplane(const glm::vec3& startPos)
         : pos(startPos)
     {
         vel = glm::vec3(0.f, 0.f, 15.f)
-            + glm::vec3(2.f, 0.f, 0.f) * randomPick()
-            + glm::vec3(0.f, 2.f, 0.f) * randomPick();
+            + glm::vec3(3.f, 0.f, 0.f) * randomPick();
     }
 
     void update(float dt) {
         if (this->alive){
             pos += vel * dt;
+            age += dt;
+            if (this->age > LIFESPAN){
+                alive = false;
+                return;
+            }
 
             // rotate vel around global Y by the angle turned this frame
             // turnrate is deg/s -> angle this frame in radians
@@ -55,7 +62,7 @@ public:
             }
 
             
-            roll = (turnrate / MAX_TURN_RATE) * 60.f;
+            roll = -(turnrate / MAX_TURN_RATE) * 60.f;
 
 
             turnrate = std::clamp(turnrate + TURN_ANGULAR_ACCEL * dt * currentTurnDir,

@@ -1,23 +1,34 @@
 #version 330 core
-
-uniform vec3 view_position;
-
-layout (location = 0) in vec3 position;
-layout (location = 1) in vec3 normals;
+layout (location = 0) in vec3 in_position;
+layout (location = 1) in vec3 in_normal;
+layout (location = 2) in vec2 in_uv;     
 
 uniform mat4 model_matrix;
 uniform mat4 view_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 light_proj_view_matrix;
+uniform mat4 camLight_proj_view_matrix;              
+
 
 out vec3 fragment_normal;
 out vec3 fragment_position;
 out vec4 fragment_position_light_space;
+out vec4 fragment_position_camLight_space; 
+out vec2 vUV;                            
 
 void main()
 {
-    fragment_normal = mat3(model_matrix) * normals;
-    fragment_position = vec3(model_matrix * vec4(position, 1.0));
-    fragment_position_light_space = light_proj_view_matrix * vec4(fragment_position, 1.0);
-    gl_Position = projection_matrix * view_matrix * model_matrix * vec4(position, 1.0);
+    vec4 worldPos = model_matrix * vec4(in_position, 1.0);
+    fragment_position = worldPos.xyz;
+
+    // normal: use normal matrix
+    mat3 normalMatrix = mat3(transpose(inverse(model_matrix)));
+    fragment_normal = normalize(normalMatrix * in_normal);
+
+    fragment_position_light_space = light_proj_view_matrix * worldPos;
+    fragment_position_camLight_space = camLight_proj_view_matrix * worldPos;
+
+    vUV = in_uv;
+
+    gl_Position = projection_matrix * view_matrix * worldPos;
 }
